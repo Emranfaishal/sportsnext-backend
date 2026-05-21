@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 
 dotenv.config();
 
@@ -22,11 +23,33 @@ const client = new MongoClient(uri, {
     }
 });
 
+const JWKS = createRemoteJWKSet(new URL(`${process.env.CLIENT_URL}/api/auth/jwks`));
+const verifyToken = async (req, res, next) => {
+    const authHeader = req?.headers.authorization
+    console.log(authHeader);
+    if (!authHeader) {
+        return res.status(401).json({ massage: 'unauthorized' });
+    }
+    const token = authHeader.split(' ')[1]
+    if (!token) {
+        return res.status(401).json({ massage: 'unauthorized' });
+    }
+    console.log(token);
+    try {
+        const { payload } = await jwtVerify(token, JWKS)
+        next()
+    }
+    catch (error) {
+        return res.status(403).json({ massage: 'unauthorized' });
+    }
+
+}
+
 async function run() {
 
     try {
 
-        await client.connect();
+        // await client.connect();
 
         const db = client.db('sports');
 
@@ -35,11 +58,19 @@ async function run() {
 
 
 
+
         // =========================
         // Sports Collection Routes
         // =========================
 
         // Get All Sports
+        app.get('/sportsCollection', async (req, res) => {
+
+            const result = await sportsCollection.find().limit(2).toArray();
+
+            res.json(result);
+        });
+
         app.get('/sportsCollection', async (req, res) => {
 
             const result = await sportsCollection.find().toArray();
@@ -60,7 +91,11 @@ async function run() {
 
 
         // Get Single Sports
-        app.get('/sportsCollection/:id', async (req, res) => {
+        app.get('/sportsCollection/:id', verifyToken, (req, res, next) => {
+            const header = req.headers.authorization;
+            console.log(header);
+            next()
+        }, async (req, res) => {
 
             const { id } = req.params;
 
@@ -145,7 +180,7 @@ async function run() {
 
 
 
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
 
         console.log("MongoDB Connected Successfully!");
 
